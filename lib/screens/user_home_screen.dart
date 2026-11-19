@@ -1,6 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+
+import 'dart:typed_data';
+
 import 'cart_screen.dart';
+import '../data/Database.dart';
 
 class UserHomeScreen extends StatefulWidget {
   const UserHomeScreen({super.key});
@@ -10,44 +14,91 @@ class UserHomeScreen extends StatefulWidget {
 }
 
 class _UserHomeScreenState extends State<UserHomeScreen> {
-  // --- ESTADOS DE LA NAVEGACIÓN ---
-  int _selectedIndex = 0; // 0 = Catálogo, 1 = Mis Pedidos
+  int _selectedIndex = 0;
 
-  // --- ESTADOS DEL CATÁLOGO ---
+  // CATÁLOGO
   Map<String, int> cart = {};
-  String selectedCategory = 'Todos';
-  final List<String> categories = ['Todos', 'Bebidas', 'Snacks', 'Almuerzos', 'Saludable'];
 
-  final List<Map<String, dynamic>> products = [
-    {'name': 'Sándwich Ave Palta', 'price': 2500, 'icon': Icons.lunch_dining, 'color': Colors.orange},
-    {'name': 'Jugo Natural', 'price': 1500, 'icon': Icons.local_drink, 'color': Colors.green},
-    {'name': 'Empanada Queso', 'price': 1200, 'icon': Icons.bakery_dining, 'color': Colors.amber},
-    {'name': 'Café Americano', 'price': 1000, 'icon': Icons.coffee, 'color': Colors.brown},
-    {'name': 'Barra de Proteína', 'price': 1800, 'icon': Icons.fitness_center, 'color': Colors.purple},
-    {'name': 'Ensalada César', 'price': 3500, 'icon': Icons.eco, 'color': Colors.lightGreen},
+  String selectedCategory = 'Todos';
+  String searchQuery = '';
+
+  final TextEditingController searchController = TextEditingController();
+
+  final List<String> categories = [
+    'Todos',
+    'Bebidas',
+    'Snacks',
+    'Almuerzos',
+    'Saludable',
+    'General',
   ];
 
-  // --- DATOS SIMULADOS DE MIS PEDIDOS ---
+  // PEDIDOS SIMULADOS
   final List<Map<String, dynamic>> activeOrders = [
-    {'id': '#1045', 'date': 'Hoy, 16:35', 'total': 4000, 'status': 'Preparando', 'items': '1x Sándwich, 1x Jugo', 'color': Colors.blue},
+    {
+      'id': '#1045',
+      'date': 'Hoy, 16:35',
+      'total': 4000,
+      'status': 'Preparando',
+      'items': '1x Sándwich, 1x Jugo',
+      'color': Colors.blue,
+    },
   ];
 
   final List<Map<String, dynamic>> pastOrders = [
-    {'id': '#0982', 'date': 'Ayer', 'total': 2500, 'status': 'Entregado', 'items': '1x Sándwich Ave Palta', 'color': Colors.grey},
-    {'id': '#0850', 'date': '05 Nov 2026', 'total': 1200, 'status': 'Entregado', 'items': '1x Empanada Queso', 'color': Colors.grey},
+    {
+      'id': '#0982',
+      'date': 'Ayer',
+      'total': 2500,
+      'status': 'Entregado',
+      'items': '1x Sándwich Ave Palta',
+      'color': Colors.grey,
+    },
+    {
+      'id': '#0850',
+      'date': '05 Nov 2026',
+      'total': 1200,
+      'status': 'Entregado',
+      'items': '1x Empanada Queso',
+      'color': Colors.grey,
+    },
   ];
 
   int get totalItemsInCart => cart.values.fold(0, (sum, qty) => sum + qty);
+
+  // FILTRAR PRODUCTOS
+  List<Map<String, dynamic>> filterProducts(
+    List<Map<String, dynamic>> products,
+  ) {
+    return products.where((product) {
+      final category = product['category']?.toString() ?? '';
+      final name = product['name']?.toString().toLowerCase() ?? '';
+
+      final matchesCategory =
+          selectedCategory == 'Todos' ||
+          category.toLowerCase() == selectedCategory.toLowerCase();
+
+      final matchesSearch = name.contains(searchQuery.toLowerCase().trim());
+
+      return matchesCategory && matchesSearch;
+    }).toList();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
+
       appBar: AppBar(
-        // El título cambia según la pestaña
         title: Text(
-          _selectedIndex == 0 ? '¿Qué comeremos hoy?' : 'Mis Pedidos', 
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 20)
+          _selectedIndex == 0 ? '¿Qué comeremos hoy?' : 'Mis Pedidos',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 20),
         ),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.transparent,
@@ -59,20 +110,19 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
           ),
         ],
       ),
-      
-      // El cuerpo cambia dependiendo del índice seleccionado
+
       body: _selectedIndex == 0 ? _buildCatalogView() : _buildMyOrdersView(),
 
-      // Menú de navegación inferior
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (int index) {
+        onDestinationSelected: (index) {
           setState(() {
             _selectedIndex = index;
           });
         },
         backgroundColor: Colors.white,
-        indicatorColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+        indicatorColor: Theme.of(context).colorScheme.primary
+            .withValues(alpha: 0.2),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.restaurant_menu_outlined),
@@ -87,29 +137,59 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
         ],
       ),
 
-      // El botón flotante solo se muestra en la pestaña Catálogo (0) y si hay productos
       floatingActionButton: (_selectedIndex == 0 && totalItemsInCart > 0)
           ? FloatingActionButton.extended(
               onPressed: () async {
-                final orderConfirmed = await Navigator.push(
+                final reservation = await Navigator.push<Map<String, dynamic>>(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => CartScreen(cart: cart, catalog: products),
+                    builder: (context) => CartScreen(
+                      cart: cart,
+                      catalog: Database.products.value,
+                    ),
                   ),
                 );
-                if (orderConfirmed == true) {
+
+                if (!mounted) return;
+
+                if (reservation != null) {
+                  final DateTime date = reservation['date'];
+
                   setState(() {
+                    activeOrders.insert(0, {
+                      'id': '#${DateTime.now().millisecondsSinceEpoch % 10000}',
+                      'date':
+                          'Hoy, ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}',
+                      'total': reservation['total'],
+                      'status': 'Preparando',
+                      'items':
+                          '${reservation['items']} | Retiro: ${reservation['time']}',
+                      'color': Colors.blue,
+                    });
+
                     cart.clear();
-                    // Opcional: Podrías cambiar _selectedIndex a 1 para llevarlo a sus pedidos al instante
-                    _selectedIndex = 1; 
+                    _selectedIndex = 1;
                   });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        '¡Reserva confirmada! Retiro: ${reservation['time']}',
+                      ),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
                 }
               },
+
               backgroundColor: Theme.of(context).colorScheme.secondary,
               icon: const Icon(Icons.shopping_cart, color: Colors.white),
               label: Text(
                 'Reservar ($totalItemsInCart)',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ).animate().scale(duration: 300.ms, curve: Curves.easeOutBack)
           : null,
@@ -117,26 +197,49 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   // ==========================================
-  // VISTA 1: EL CATÁLOGO (Lo que ya teníamos)
+  // CATÁLOGO
   // ==========================================
+
   Widget _buildCatalogView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // BUSCADOR
         Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(16),
           child: TextField(
+            controller: searchController,
+            onChanged: (value) {
+              setState(() {
+                searchQuery = value;
+              });
+            },
             decoration: InputDecoration(
               hintText: 'Buscar productos...',
               prefixIcon: const Icon(Icons.search, color: Colors.grey),
+              suffixIcon: searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() {
+                          searchQuery = '';
+                        });
+                      },
+                    )
+                  : null,
               filled: true,
               fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30), borderSide: BorderSide.none),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
+              ),
               contentPadding: const EdgeInsets.symmetric(vertical: 0),
             ),
-          ),
-        ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2, end: 0),
+          ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2, end: 0),
+        ),
 
+        // FILTROS DE CATEGORÍA
         SizedBox(
           height: 40,
           child: ListView.builder(
@@ -146,18 +249,27 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             itemBuilder: (context, index) {
               final category = categories[index];
               final isSelected = category == selectedCategory;
+
               return Padding(
-                padding: const EdgeInsets.only(right: 8.0),
+                padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
                   label: Text(category),
                   selected: isSelected,
-                  onSelected: (bool selected) => setState(() => selectedCategory = category),
+                  onSelected: (selected) {
+                    setState(() {
+                      selectedCategory = category;
+                    });
+                  },
                   selectedColor: Theme.of(context).colorScheme.primary,
                   labelStyle: TextStyle(
                     color: isSelected ? Colors.white : Colors.black87,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
               );
             },
@@ -166,68 +278,181 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
 
         const SizedBox(height: 16),
 
+        // PRODUCTOS FILTRADOS
         Expanded(
-          child: GridView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              childAspectRatio: 0.8,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-            ),
-            itemCount: products.length,
-            itemBuilder: (context, index) => _buildProductCard(products[index], index),
+          child: ValueListenableBuilder<List<Map<String, dynamic>>>(
+            valueListenable: Database.products,
+            builder: (context, products, _) {
+              final filteredProducts = filterProducts(products);
+
+              if (filteredProducts.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.search_off,
+                        size: 65,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'No se encontraron productos',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'Prueba otra categoría o búsqueda.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: () {
+                          searchController.clear();
+                          setState(() {
+                            searchQuery = '';
+                            selectedCategory = 'Todos';
+                          });
+                        },
+                        child: const Text('Limpiar filtros'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              return GridView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  childAspectRatio: 0.8,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                itemCount: filteredProducts.length,
+                itemBuilder: (context, index) {
+                  final product = filteredProducts[index];
+
+                  return _buildProductCard(product, index);
+                },
+              );
+            },
           ),
         ),
       ],
     );
   }
 
+  // ==========================================
+  // TARJETA DE PRODUCTO
+  // ==========================================
+
   Widget _buildProductCard(Map<String, dynamic> product, int index) {
     final String name = product['name'];
     final int currentQty = cart[name] ?? 0;
+    final int stock = (product['stock'] as num?)?.toInt() ?? 0;
+
+    final bool hasStock = currentQty < stock;
+
+    final imageBytes = product['imageBytes'];
 
     return Card(
+      key: ValueKey('${product['name']}_${imageBytes?.length ?? 0}'),
       elevation: 4,
       shadowColor: Colors.black12,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Center(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: product['color'].withOpacity(0.2), shape: BoxShape.circle),
-                  child: Icon(product['icon'], size: 40, color: product['color']),
-                ),
+                child: imageBytes != null
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          imageBytes as Uint8List,
+                          fit: BoxFit.cover,
+                          width: double.infinity,
+                          errorBuilder: (context, error, stackTrace) {
+                            return const Icon(
+                              Icons.broken_image,
+                              size: 48,
+                              color: Colors.red,
+                            );
+                          },
+                        ),
+                      )
+                    : const Icon(
+                        Icons.restaurant,
+                        size: 48,
+                        color: Colors.green,
+                      ),
               ),
             ),
+
             const SizedBox(height: 8),
-            Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+
+            Text(
+              name,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+
             const SizedBox(height: 4),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('\$${product['price']}', style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  '\$${product['price']}',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+
                 InkWell(
                   onTap: () {
                     if (currentQty >= 2) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Límite: Máximo 2 "$name".'), backgroundColor: Colors.orange.shade700, duration: const Duration(seconds: 2)));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Límite: Máximo 2 "$name".'),
+                          backgroundColor: Colors.orange.shade700,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
                       return;
                     }
-                    setState(() => cart[name] = currentQty + 1);
+
+                    setState(() {
+                      cart[name] = currentQty + 1;
+                    });
                   },
                   child: Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: currentQty >= 2 ? Colors.grey : Theme.of(context).colorScheme.primary,
+                      color: currentQty >= 2
+                          ? Colors.grey
+                          : Theme.of(context).colorScheme.primary,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: currentQty > 0 ? Text('$currentQty', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)) : const Icon(Icons.add, color: Colors.white, size: 20),
+                    child: currentQty > 0
+                        ? Text(
+                            '$currentQty',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : const Icon(Icons.add, color: Colors.white, size: 20),
                   ),
                 ),
               ],
@@ -239,43 +464,50 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
   }
 
   // ==========================================
-  // VISTA 2: MIS PEDIDOS (Nueva pestaña)
+  // MIS PEDIDOS
   // ==========================================
+
   Widget _buildMyOrdersView() {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Título de la sección en curso
         const Text(
           'En curso',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ).animate().fadeIn(),
+
         const SizedBox(height: 12),
-        
-        // Generar lista de pedidos activos
-        ...activeOrders.map((order) => _buildOrderTile(order)).toList(),
+
+        ...activeOrders.map((order) => _buildOrderTile(order)),
 
         const SizedBox(height: 24),
-        
-        // Título de la sección historial
+
         const Text(
           'Historial de pedidos',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
+          ),
         ).animate().fadeIn(delay: 200.ms),
+
         const SizedBox(height: 12),
 
-        // Generar lista de pedidos pasados
-        ...pastOrders.map((order) => _buildOrderTile(order)).toList(),
+        ...pastOrders.map((order) => _buildOrderTile(order)),
       ],
     );
   }
 
   Widget _buildOrderTile(Map<String, dynamic> order) {
-    Color statusColor = order['color'];
-    bool isActive = order['status'] != 'Entregado';
+    final Color statusColor = order['color'];
+    final bool isActive = order['status'] != 'Entregado';
 
     return Card(
-      elevation: isActive ? 4 : 1, // Más sombra si está activo
+      elevation: isActive ? 4 : 1,
       shadowColor: Colors.black12,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -288,34 +520,69 @@ class _UserHomeScreenState extends State<UserHomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(order['id'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(
+                  order['id'],
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
+                    color: statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     order['status'],
-                    style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 12),
+                    style: TextStyle(
+                      color: statusColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ],
             ),
+
             const Divider(height: 24),
-            Text(order['items'], style: const TextStyle(color: Colors.black87, fontSize: 14)),
+
+            Text(
+              order['items'],
+              style: const TextStyle(color: Colors.black87, fontSize: 14),
+            ),
+
             const SizedBox(height: 12),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.calendar_today, size: 14, color: Colors.grey),
+                    const Icon(
+                      Icons.calendar_today,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 4),
-                    Text(order['date'], style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                    Text(
+                      order['date'],
+                      style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    ),
                   ],
                 ),
-                Text('\$${order['total']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+
+                Text(
+                  '\$${order['total']}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ],
             ),
           ],

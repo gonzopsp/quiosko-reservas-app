@@ -1,10 +1,13 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/login_screen.dart';
 import 'screens/user_home_screen.dart';
 import 'screens/owner_home_screen.dart';
+import 'data/database.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Database.initializeImages();
   runApp(const QuioscoApp());
 }
 
